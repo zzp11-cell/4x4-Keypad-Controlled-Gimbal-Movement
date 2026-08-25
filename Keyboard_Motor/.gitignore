@@ -1,0 +1,25 @@
+# Secrets and certificates
+*.pem
+*.key
+*.pfx
+*.p12
+*.docx
+*.pdf
+*.env
+
+# Keil build output and per-user settings
+**/keil/Objects/
+**/keil/Listings/
+**/keil/*.uvguix.*
+*.uvguix.*
+build.log
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.bak
+*.tmp

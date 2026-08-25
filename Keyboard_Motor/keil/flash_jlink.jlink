@@ -1,0 +1,17 @@
+// ============================================================
+//  J-Link 烧录脚本 - Keyboard_Motor (天猛星 MSPM0G3507)
+//  用法:
+//    JLink.exe ^
+//      -device MSPM0G3507 -if SWD -speed 4000 -autoconnect 1 ^
+//      -CommanderScript flash_jlink.jlink
+//
+//  接线 (J-Link -> 天猛星 SWD 排针):
+//    SWDIO -> PA19   SWCLK -> PA20   GND -> GND   VTref -> 3V3
+//  (天猛星 SWD 已与板载 CH340 互不冲突, 可同时插 USB 供电)
+// ============================================================
+r              // 复位并暂停
+h              // halt CPU
+loadfile ./Objects/empty_LP_MSPM0G3507_nortos_keil.axf
+r              // 烧完复位
+g              // 运行
+qc             // 退出并关闭 J-Link

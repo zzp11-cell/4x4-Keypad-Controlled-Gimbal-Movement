@@ -1,0 +1,110 @@
+/**
+ * These arguments were used when this file was generated. They will be automatically applied on subsequent loads
+ * via the GUI or CLI. Run CLI with '--help' for additional information on how to override these arguments.
+ * @cliArgs --device "MSPM0G350X" --part "Default" --package "LQFP-64(PM)" --product "mspm0_sdk@2.10.00.04"
+ * @v2CliArgs --device "MSPM0G3507" --package "LQFP-64(PM)" --product "mspm0_sdk@2.10.00.04"
+ * @versions {"tool":"1.26.2"}
+ */
+
+/**
+ * Keyboard_Motor: 4x4 矩阵键盘控制双轴云台电机 (天猛星 MSPM0G3507)
+ *   UART3 (PB12=TX, PB13=RX) -> Emm_V5 双轴闭环步进电机 (115200, ID 1=X, 2=Y)
+ *   4x4 矩阵键盘:
+ *     行 R1-R4 (扫描输出): R1=PA28, R2=PA31, R3=PB4, R4=PB5
+ *     列 C1-C4 (输入上拉): C1=PA9,  C2=PA8,  C3=PA1, C4=PA0
+ *   LED (PA7) 状态指示
+ *   时钟 80MHz
+ *
+ * 引脚映射已核实 mspm0g350x.h:
+ *   PB12/PB13 -> UART3 (PINCM29/30)
+ *   PA0/PA1/PA8/PA9/PA28/PA31/PB4/PB5 均支持 GPIO 复用
+ */
+const GPIO   = scripting.addModule("/ti/driverlib/GPIO", {}, false);
+const GPIO1  = GPIO.addInstance();
+const GPIO2  = GPIO.addInstance();
+const SYSCTL = scripting.addModule("/ti/driverlib/SYSCTL");
+const UART   = scripting.addModule("/ti/driverlib/UART", {}, false);
+const UART1  = UART.addInstance();
+
+/**
+ * Write custom configuration values to the imported modules.
+ */
+
+/* ===== 时钟: 默认配置 (不用 PLL), 与天猛星官方 02_2UART 例程一致 =====
+ * SYSOSC=32MHz, MCLK=BUSCLK=ULPCLK=32MHz, forceDefaultClkConfig=true.
+ * 不启用 clockTreeEn (官方例程也未启用), 避免手改 PLL 导致波特率错.
+ * UART3 @ 32MHz: IBRD=17/FBRD=23 -> 115200. */
+
+const Board                       = scripting.addModule("/ti/driverlib/Board", {}, false);
+Board.peripheral.$assign          = "DEBUGSS";
+Board.peripheral.swclkPin.$assign = "PA20";
+Board.peripheral.swdioPin.$assign = "PA19";
+
+/* ===== LED 指示 (PB22 用户灯, 高有效) =====
+ * 天猛星板载用户灯 PB22, 高电平点亮 (25diansai1 工程已确认)
+ * GPIO 模块名 LED + pin 名 user -> 生成宏 LED_user_PORT/PIN/IOMUX (main.c 引用) */
+GPIO1.$name                         = "LED";
+GPIO1.associatedPins.create(1);
+GPIO1.associatedPins[0].$name        = "user";
+GPIO1.associatedPins[0].pin.$assign = "PB22";
+
+/* ===== 4x4 矩阵键盘 =====
+ * 行(R1-R4)=扫描输出(逐行拉低), 列(C1-C4)=输入上拉(按下读0)
+ *   R1=PA28, R2=PA31, R3=PB4, R4=PB5   (行输出)
+ *   C1=PA9,  C2=PA8,  C3=PA1, C4=PA0   (列输入上拉)
+ * 只用 S1-S8 (R1/R2 两行 × C1-C4 四列), R3/R4 预留不用.
+ * 命名 KEY -> 生成宏 KEY_R1..R4_PORT/PIN + KEY_C1..C4_PORT/PIN */
+GPIO2.$name                         = "KEY";
+GPIO2.associatedPins.create(8);
+/* 行 R1-R4: 输出, 默认高(不选中), 扫描时拉低 */
+GPIO2.associatedPins[0].$name        = "R1";
+GPIO2.associatedPins[0].direction    = "OUTPUT";
+GPIO2.associatedPins[0].pin.$assign = "PA28";
+GPIO2.associatedPins[1].$name        = "R2";
+GPIO2.associatedPins[1].direction    = "OUTPUT";
+GPIO2.associatedPins[1].pin.$assign = "PA31";
+GPIO2.associatedPins[2].$name        = "R3";
+GPIO2.associatedPins[2].direction    = "OUTPUT";
+GPIO2.associatedPins[2].pin.$assign = "PB4";
+GPIO2.associatedPins[3].$name        = "R4";
+GPIO2.associatedPins[3].direction    = "OUTPUT";
+GPIO2.associatedPins[3].pin.$assign = "PB5";
+/* 列 C1-C4: 输入上拉, 按下读0 */
+GPIO2.associatedPins[4].$name             = "C1";
+GPIO2.associatedPins[4].direction          = "INPUT";
+GPIO2.associatedPins[4].internalResistor   = "PULL_UP";
+GPIO2.associatedPins[4].pin.$assign        = "PA9";
+GPIO2.associatedPins[5].$name             = "C2";
+GPIO2.associatedPins[5].direction          = "INPUT";
+GPIO2.associatedPins[5].internalResistor   = "PULL_UP";
+GPIO2.associatedPins[5].pin.$assign        = "PA8";
+/* C3 = PA1: PA1 是模拟专用引脚, SysConfig 禁止配成数字 INPUT (报 "No option
+ * named PA1" ). 但手写 ti_msp_dl_config.c 用 DL_GPIO_initDigitalInputFeatures
+ * 直接写 PINCM2 寄存器绕过限制, 实测 S7 按键能正常工作.
+ * 因此 syscfg 里注释掉 PA1 分配 (避免重生成报错), 实际引脚配置以手写 config.c 为准.
+ * 若日后要让 SysConfig 接管 C3, 需把 C3 线重接到正规数字输入脚 (如 PA2/PA3). */
+GPIO2.associatedPins[6].$name             = "C3";
+GPIO2.associatedPins[6].direction          = "INPUT";
+GPIO2.associatedPins[6].internalResistor   = "PULL_UP";
+// GPIO2.associatedPins[6].pin.$assign        = "PA1";   // 见上注释, 手写 config.c 配 PA1
+/* C4 = PA0: 同 C3, PA0 也是模拟专用引脚, SysConfig 禁止配数字 INPUT.
+ * 手写 ti_msp_dl_config.c 绕过限制配 PA0 当输入, S8 实测可用.
+ * syscfg 注释掉避免重生成报错, 实际以手写 config.c 为准. */
+GPIO2.associatedPins[7].$name             = "C4";
+GPIO2.associatedPins[7].direction          = "INPUT";
+GPIO2.associatedPins[7].internalResistor   = "PULL_UP";
+// GPIO2.associatedPins[7].pin.$assign        = "PA0";   // 见上注释, 手写 config.c 配 PA0
+
+SYSCTL.forceDefaultClkConfig = true;
+// SYSCTL.clockTreeEn           = true;   // 不启用自定义时钟树, 用默认 32MHz (官方例程做法)
+
+/* ===== UART3 -> Emm_V5 步进电机驱动器 =====
+ *   PB12=TX (->电机RAH), PB13=RX (<-电机TBL), 115200-8N1, RX中断
+ *   命名 UART_3 -> 生成宏 UART_3_INST = UART3
+ *   只使能 RX 中断 (电机命令为主动发送, RX 仅收响应; 不依赖 RTOUT) */
+UART1.$name                    = "UART_3";
+UART1.targetBaudRate           = 115200;
+UART1.enabledInterrupts        = ["RX"];
+UART1.peripheral.$assign       = "UART3";
+UART1.peripheral.rxPin.$assign = "PB13";
+UART1.peripheral.txPin.$assign = "PB12";
